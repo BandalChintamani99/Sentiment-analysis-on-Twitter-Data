@@ -1,0 +1,218 @@
+
+Step-1: Import the Necessary Dependencies
+import re
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+# plotting
+import seaborn as sns
+import wordcloud
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+
+# nltk
+import nltk
+nltk.download('stopwords')
+from nltk.stem import WordNetLemmatizer
+from nltk.stem import SnowballStemmer
+from nltk.corpus import stopwords
+# sklearn
+from sklearn.svm import LinearSVC
+from sklearn.naive_bayes import BernoulliNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics import confusion_matrix, classification_report
+
+Step-2: Read and Load the Dataset
+# Importing the dataset
+DATASET_COLUMNS=['target','ids','date','flag','user','text']
+DATASET_ENCODING = "ISO-8859-1"
+df = pd.read_csv( "/content/drive/MyDrive/Twitter dataset.csv", encoding=DATASET_ENCODING, names=DATASET_COLUMNS )
+df.sample(5)
+
+Step-3: Exploratory Data Analysis
+df.head()
+df.tail()
+df.columns
+df. Shape
+df.info()
+df.dtypes
+
+Checking Missing Values
+np.sum(df.isnull().any(axis=1))
+
+Rows and columns in the dataset
+print('Count of columns in the data is:  ', len(df.columns))
+print('Count of rows in the data is:  ', len(df))
+
+Check unique target values
+df['target'].unique()
+
+Check the number of target values
+df['target'].nunique()
+
+Step-4: Data Visualization
+# Plotting the distribution for dataset.
+ax = df.groupby('target').count().plot(kind='bar', title='Distribution of data',legend=False)
+ax.set_xticklabels(['Negative','Positive'], rotation=0)
+# Storing data in lists.
+text, sentiment = list(df['text']), list(df['target'])
+
+import seaborn as sns
+sns.countplot(x='target', data=df)
+
+Drop the Columns 
+df = df.drop(['ids', 'date', 'flag', 'user'], axis=1)
+df.sample(5)
+
+lab_to_sentiment = {0:"Negative", 4:"Positive"}
+# convert numerical labels into human-readable categorical labels, making the data more understandable
+def label_decoder(label):
+    return lab_to_sentiment[label]
+df['target'] = df['target'].map(label_decoder)
+df.head()
+
+Step-5: Text Preprocessing
+stop_words = stopwords.words('english') # (e.g., "the," "is," "and") that are often removed from text data
+print(stop_words)
+
+stemmer = SnowballStemmer('english') #"running" and "ran" would be stemmed to "run".
+print(stemmer)
+
+text_cleaning_re = "@\S+|https?:\S+|http?:\S|[^A-Za-z0-9]+"  # URL and username
+
+def preprocess(text):
+    text = re.sub(text_cleaning_re, ' ', str(text).lower()).strip()
+    #Any pattern matched by text_cleaning_re will be replaced with a single space ' '
+    #.strip() removes leading and trailing whitespace characters (spaces, tabs, etc.) from the modified text.
+    tokens = []
+    for token in text.split():
+        if token not in stop_words:
+            tokens.append(token)
+    return " ".join(tokens)  #Joins the filtered token
+
+df['text'] = df['text'].map(preprocess)
+
+Plot a cloud of words for Positive tweets
+	
+from wordcloud import WordCloud
+
+from PIL import Image, ImageDraw, ImageFont
+plt.figure(figsize = (20,20))
+wc = WordCloud(max_words = 2000 , width = 1600 , height = 800).generate(" ".join(df[df.target == 'Positive'].text))
+plt.imshow(wc , interpolation = 'bilinear')
+
+Plot a cloud of words for negative tweets
+
+from wordcloud import WordCloud
+
+from PIL import Image, ImageDraw, ImageFont
+plt.figure(figsize = (20,20))
+wc = WordCloud(max_words = 2000 , width = 1600 , height = 800).generate(" ".join(df[df.target == 'Negative'].text))
+plt.imshow(wc , interpolation = 'bilinear')
+
+Splitting Our Data Into Train and Test Subsets
+
+X=df.text
+y=df.target
+
+X_train, X_test, y_train, y_test = train_test_split(X,y,test_size = 0.05, random_state =26105111)
+
+Transforming the Dataset Using TF-IDF Vectorizer
+
+vectoriser = TfidfVectorizer(ngram_range=(1,2), max_features=500000)
+vectoriser.fit(X_train)
+print('No. of feature_words: ', len(vectoriser.get_feature_names()))
+
+
+Transform the data
+X_train = vectoriser.transform(X_train)
+X_test  = vectoriser.transform(X_test)
+
+
+Model Evaluation 
+
+def model_Evaluate(model):
+# Predict values for Test dataset
+y_pred = model.predict(X_test)
+# Print the evaluation metrics for the dataset.
+print(classification_report(y_test, y_pred))
+# Compute and plot the Confusion matrix
+cf_matrix = confusion_matrix(y_test, y_pred)
+categories = ['Negative','Positive']
+group_names = ['True Neg','False Pos', 'False Neg','True Pos']
+group_percentages = ['{0:.2%}'.format(value) for value in cf_matrix.flatten() / np.sum(cf_matrix)]
+labels = [f'{v1}n{v2}' for v1, v2 in zip(group_names,group_percentages)]
+labels = np.asarray(labels).reshape(2,2)
+sns.heatmap(cf_matrix, annot = labels, cmap = 'Blues',fmt = '',
+xticklabels = categories, yticklabels = categories)
+plt.xlabel("Predicted values", fontdict = {'size':14}, labelpad = 10)
+plt.ylabel("Actual values" , fontdict = {'size':14}, labelpad = 10)
+plt.title ("Confusion Matrix", fontdict = {'size':18}, pad = 20)
+
+
+Model Building
+
+Model-1
+
+BNBmodel = BernoulliNB()
+BNBmodel.fit(X_train, y_train)
+model_Evaluate(BNBmodel)
+y_pred1 = BNBmodel.predict(X_test)
+
+Plot the ROC-AUC Curve for model-1
+
+from sklearn.metrics import roc_curve, auc
+fpr, tpr, thresholds = roc_curve(y_test, y_pred1)
+roc_auc = auc(fpr, tpr)
+plt.figure()
+plt.plot(fpr, tpr, color='darkorange', lw=1, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC CURVE')
+plt.legend(loc="lower right")
+plt.show()
+
+Model-2:
+
+SVCmodel = LinearSVC()
+SVCmodel.fit(X_train, y_train)
+model_Evaluate(SVCmodel)
+y_pred2 = SVCmodel.predict(X_test)
+
+Plot the ROC-AUC Curve for model-2
+
+from sklearn.metrics import roc_curve, auc
+fpr, tpr, thresholds = roc_curve(y_test, y_pred2)
+roc_auc = auc(fpr, tpr)
+plt.figure()
+plt.plot(fpr, tpr, color='darkorange', lw=1, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+
+Model-3
+
+LRmodel = LogisticRegression(C = 2, max_iter = 1000, n_jobs=-1)
+LRmodel.fit(X_train, y_train)
+model_Evaluate(LRmodel)
+y_pred3 = LRmodel.predict(X_test)
+
+Plot the ROC-AUC Curve for model-3
+
+from sklearn.metrics import roc_curve, auc
+fpr, tpr, thresholds = roc_curve(y_test, y_pred3)
+roc_auc = auc(fpr, tpr)
+plt.figure()
+plt.plot(fpr, tpr, color='darkorange', lw=1, label='ROC curve (area = %0.2f)' % roc_auc)
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC CURVE')
+plt.legend(loc="lower right")
+plt.show()
